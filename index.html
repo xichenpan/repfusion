@@ -1,0 +1,962 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <style>
+            pre, code {
+                font-size: 16px;
+            }
+        </style>
+
+        <title>RepFusion: Leveraging Multimodal Priors for Denoising in Representation Space</title>
+        <link rel="icon" type="image/svg+xml" href="./static/img/icons/favicon.svg">
+
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <!-- Open Graph -->
+        <meta property="og:url" content="https://repfusion.github.io" />
+        <meta property="og:image" content="./static/img/repfusion/t2i.png" />
+        <meta property="og:title" content="RepFusion: Leveraging Multimodal Priors for Denoising in Representation Space" />
+
+        <!-- Twitter -->
+        <meta property="og:description" content="RepFusion repurposes a frozen multimodal LLM as a noisy representation encoder for text-to-image generation, providing strong denoising priors in representation space and enabling test-time scaling via repeated MLLM conditioning." />
+        <meta name="twitter:url" content="https://repfusion.github.io" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:image" content="./static/img/repfusion/t2i.png" />
+        <meta name="twitter:title" content="RepFusion: Leveraging Multimodal Priors for Denoising in Representation Space" />
+        <meta name="twitter:description" content="RepFusion repurposes a frozen multimodal LLM as a noisy representation encoder for text-to-image generation, providing strong denoising priors in representation space and enabling test-time scaling via repeated MLLM conditioning." />
+
+        <!-- JS Libraries -->
+        <script src="./static/js/distill_template.v2.js"></script>
+        <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+        <script defer="" src="./static/js/hider.js"></script>
+
+        <!-- Stylesheets -->
+        <link rel="stylesheet" href="./static/css/style.css">
+        <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+
+        <!-- KaTeX -->
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.10.2/dist/katex.min.css" integrity="sha384-yFRtMMDnQtDRO8rLpMIKrtPCD5jdktao2TV19YiZYWMDkUR5GQZR/NOVTdquEx1j" crossorigin="anonymous">
+        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.10.2/dist/katex.min.js" integrity="sha384-9Nhn55MVVN0/4OFx7EE5kpFBPsEMZxKTCnA+4fqDmg12eCTqGi6+BB2LjY8brQxJ" crossorigin="anonymous"></script>
+        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.10.2/dist/contrib/auto-render.min.js" integrity="sha384-kWPLUVMOks5AQFrykwIup5lo0m3iMkkHrD0uJ4H5cjeGihAutqP0yW0J6dpFiVkI" crossorigin="anonymous" onload="renderMathInElement(document.body);"></script>
+
+        <!-- FontAwesome -->
+        <script defer src="./static/js/fontawesome.all.min.js"></script>
+
+        <!-- Medium Zoom -->
+        <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+        <script defer src="./static/js/medium-zoom.min.js"></script>
+        <script defer src="./static/js/zoom.js"></script>
+
+        <style>
+        /* --- Author byline --- */
+        .authors a,
+        .authors a * {
+            text-decoration: none !important;
+            border-bottom: none !important;
+            color: inherit !important;
+        }
+        .authors a:hover,
+        .authors a:hover * {
+            color: #007bff !important;
+            text-decoration: underline !important;
+        }
+        .authors .author-row {
+            margin-bottom: 0.4rem;
+        }
+        .authors .author-name {
+            font-size: 1.05rem;
+        }
+        /* Breathing room between the grey byline dividers and the author content */
+        .byline {
+            padding-top: 2rem !important;
+            padding-bottom: 2rem !important;
+        }
+
+        /* --- Result tables --- */
+        /* Match .text (width:150%; margin-left:-20%) so tables & figures align with paragraph text */
+        .table-wrapper {
+            display: block;
+            width: 150%;
+            margin: 1.5rem 0 2rem -20%;
+        }
+        /* Figures use distill's default grid-column: page (wider than text, centered).
+           Override the existing margin-left: 0 so the figure image itself centers. */
+        d-article d-figure figure,
+        d-article > figure {
+            width: 100%;
+            margin: 0 auto;
+            text-align: center;
+        }
+        /* Keep selected result figures wide; method/motivation figures stay closer to text width. */
+        d-article #fig-sampling,
+        d-article #fig-samples,
+        d-article #fig-coscaling {
+            grid-column: text !important;
+        }
+        d-article #fig-sampling figure,
+        d-article #fig-samples figure,
+        d-article #fig-coscaling figure {
+            width: 150%;
+            max-width: none;
+            margin-left: -20%;
+            margin-right: 0;
+        }
+        d-article #fig-teaser,
+        d-article #fig-arch {
+            grid-column: text !important;
+        }
+        d-article #fig-teaser figure,
+        d-article #fig-arch figure {
+            width: 100%;
+            max-width: none;
+            margin-left: 0;
+            margin-right: 0;
+        }
+        /* Tables: same width as .text paragraphs, matching their left-shift so headings line up with table rows */
+        .table-wrapper {
+            width: 150%;
+            margin: 1.5rem 0 2rem -20%;
+        }
+        .table-container {
+            overflow-x: auto;
+            overflow-y: hidden;
+            width: 100%;
+            max-width: 100%;
+            -webkit-overflow-scrolling: touch;
+        }
+        /* Force figures to fit the text column */
+        d-article figure img,
+        d-article figure .pdf-figure {
+            width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+        .data-table {
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 0 auto;
+            font-size: 13px;
+            min-width: 100%;
+            line-height: 1.3;
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: 'tnum';
+        }
+        .data-table thead th {
+            background: #f2f2f2;
+            font-weight: 700;
+            text-align: center;
+            padding: 0.5em 0.6em;
+            border-bottom: 2px solid #333;
+            color: #2d3748;
+            white-space: nowrap;
+        }
+        .data-table td {
+            padding: 0.35em 0.6em;
+            text-align: center;
+            border-bottom: 1px solid #ececec;
+            color: #4a5568;
+        }
+        .data-table td:first-child,
+        .data-table th:first-child {
+            text-align: left;
+            font-weight: 600;
+            color: #2d3748;
+            padding-left: 0.75em;
+            white-space: nowrap;
+        }
+        .data-table tbody tr:hover { background-color: #fafcff; }
+        .data-table tr.group-header td {
+            background: #eaf2fb;
+            font-style: italic;
+            font-weight: 700;
+            text-align: left;
+            color: #2d3748;
+            padding: 0.45em 0.75em;
+        }
+        .data-table tr.ours td {
+            background: #f6f8f2;
+            font-weight: 700;
+            color: #1f2e30;
+        }
+        .data-table .best { font-weight: 700; }
+        .table-wrapper figcaption {
+            text-align: center;
+            width: 100%;
+            font-size: 0.95rem;
+            color: #555;
+            margin-top: 0.6rem;
+        }
+
+        @media (max-width: 768px) {
+            .data-table { font-size: 11px; }
+            .data-table thead th,
+            .data-table td { padding: 0.3em 0.4em; }
+        }
+
+        /* --- Live interactive viewer --- */
+        .viewer-wrapper {
+            width: 150%;
+            margin: 1.5rem 0 2rem -20%;
+        }
+        .viewer-frame {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 10;
+            min-height: 520px;
+            background: #f7f8fa;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            box-shadow: 0 6px 22px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+        }
+        .viewer-frame iframe {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            border: 0;
+            display: block;
+            background: #f7f8fa;
+        }
+        .viewer-frame .viewer-loading {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.6em;
+            color: #6b7280;
+            font-size: 0.95rem;
+            pointer-events: none;
+            transition: opacity 0.4s;
+        }
+        .viewer-frame .viewer-loading.hidden { opacity: 0; }
+        .viewer-spinner {
+            width: 28px; height: 28px;
+            border: 3px solid #d6eefb;
+            border-top-color: #508af6;
+            border-radius: 50%;
+            animation: viewer-spin 0.9s linear infinite;
+        }
+        @keyframes viewer-spin { to { transform: rotate(360deg); } }
+        .viewer-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-top: 0.8rem;
+            flex-wrap: wrap;
+        }
+        .viewer-action-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45em;
+            padding: 0.5em 1em;
+            background: #508af6;
+            color: #ffffff !important;
+            text-decoration: none !important;
+            border-radius: 6px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            border: 2px solid #508af6;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .viewer-action-btn:hover {
+            background: #2d6ee0;
+            border-color: #2d6ee0;
+        }
+        .viewer-tip {
+            font-size: 0.85rem;
+            color: #6b7280;
+            line-height: 1.4;
+        }
+        .viewer-caption {
+            text-align: center;
+            font-size: 0.95rem;
+            color: #555;
+            margin-top: 0.6rem;
+        }
+        @media (max-width: 768px) {
+            .viewer-wrapper { width: 100%; margin-left: 0; margin-right: 0; }
+            .viewer-frame { min-height: 420px; aspect-ratio: auto; height: 75vh; }
+            .viewer-actions { justify-content: center; text-align: center; }
+        }
+
+        /* --- RepFusion project-page polish --- */
+        :root {
+            --rf-ink: #1f2e30;
+            --rf-muted: #596465;
+            --rf-blue: #345766;
+            --rf-green: #6f7d59;
+            --rf-cream: #fff8ea;
+            --rf-line: #d9ddd5;
+            --rf-soft: #f8f6ef;
+        }
+        .header-wrapper {
+            background: linear-gradient(120deg, #1f2e30 0%, #345766 30%, #798063 55%, #bf944a 75%, #957438 100%);
+        }
+        .header-content h1 {
+            letter-spacing: -0.03em;
+        }
+        .rf-word {
+            font-family: "Courier New", monospace;
+            letter-spacing: -0.03em;
+        }
+        .hero-copy {
+            max-width: 760px;
+            color: #fff4d3;
+            font-size: 1.2rem;
+            line-height: 1.45;
+        }
+        .icon-container {
+            gap: 15px;
+            margin-top: 1.1rem;
+        }
+        .icon-item {
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            backdrop-filter: none;
+        }
+        .header-image .teaser-image {
+            border-radius: 8px;
+            box-shadow: 0 10px 28px rgba(31, 46, 48, 0.24);
+            border: 1px solid rgba(255, 240, 206, 0.35);
+        }
+        .rf-lede {
+            margin-top: 2rem;
+            padding: 1.1rem 1.25rem;
+            border-left: 5px solid #bf944a;
+            border-radius: 4px;
+            background: var(--rf-soft);
+            box-shadow: none;
+        }
+        .rf-lede p {
+            margin: 0;
+            color: var(--rf-ink);
+            font-size: 1.25rem;
+            line-height: 1.55;
+        }
+        .section-eyebrow {
+            display: inline-block;
+            margin-bottom: 0.55rem;
+            color: var(--rf-green);
+            font-size: 0.82rem;
+            font-weight: 800;
+            letter-spacing: 0.13em;
+            text-transform: uppercase;
+        }
+        .finding-grid,
+        .evidence-grid,
+        .lesson-grid {
+            display: grid;
+            width: 150%;
+            margin: 1.4rem 0 2.2rem -20%;
+            gap: 1rem;
+        }
+        .finding-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .evidence-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .lesson-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .finding-card,
+        .evidence-card,
+        .lesson-card,
+        .rf-callout {
+            border: 1px solid var(--rf-line);
+            border-radius: 6px;
+            background: #ffffff;
+            box-shadow: none;
+        }
+        .finding-card {
+            padding: 1rem 1.1rem;
+            min-height: 0;
+            border-left: 5px solid #798063;
+        }
+        .finding-card .tag {
+            display: inline-block;
+            margin-bottom: 0.55rem;
+            padding: 0;
+            border-radius: 0;
+            background: transparent;
+            color: #957438;
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .finding-card h3,
+        .lesson-card h3 {
+            margin: 0 0 0.45rem;
+            color: var(--rf-ink);
+            font-size: 1.15rem;
+            line-height: 1.25;
+        }
+        .finding-card p,
+        .lesson-card p {
+            margin: 0;
+            color: var(--rf-muted);
+            font-size: 0.98rem;
+            line-height: 1.45;
+        }
+        .evidence-card {
+            padding: 1rem 1.1rem;
+            background: var(--rf-soft);
+        }
+        .evidence-card .label {
+            display: block;
+            margin-bottom: 0.35rem;
+            color: var(--rf-blue);
+            font-size: 1.05rem;
+            font-weight: 800;
+            line-height: 1.25;
+        }
+        .evidence-card .detail {
+            display: block;
+            color: var(--rf-muted);
+            font-size: 0.95rem;
+            line-height: 1.45;
+        }
+        .lesson-card {
+            padding: 1.1rem 1.2rem;
+            border-left: 5px solid #345766;
+        }
+        .rf-callout {
+            width: 150%;
+            margin: 1.4rem 0 2rem -20%;
+            padding: 1.25rem 1.45rem;
+            background: #fff8ea;
+            color: var(--rf-ink);
+            border-left: 5px solid #bf944a;
+        }
+        .rf-callout strong {
+            color: #6a4f22;
+        }
+        .rf-callout p {
+            margin: 0;
+            color: var(--rf-ink);
+            font-size: 1.08rem;
+            line-height: 1.55;
+        }
+        d-article figure {
+            overflow: visible;
+            border-radius: 0;
+        }
+        d-article figure img {
+            border-radius: 0;
+        }
+        d-article figcaption {
+            color: #526070;
+            line-height: 1.45;
+        }
+        .data-table .highlight,
+        .data-table .best {
+            color: #1f2e30;
+            background: transparent;
+            border-radius: 0;
+            font-weight: 700;
+        }
+        @media (max-width: 980px) {
+            .finding-grid,
+            .evidence-grid,
+            .lesson-grid,
+            .rf-callout {
+                width: 100%;
+                margin-left: 0;
+            }
+            .finding-grid,
+            .evidence-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+        @media (max-width: 640px) {
+            .finding-grid,
+            .evidence-grid,
+            .lesson-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        @media (min-width: 600px) {
+            .header-content {
+                max-width: calc(46% - 20px);
+            }
+            .header-image {
+                max-width: calc(54% - 20px);
+            }
+            .header-image img {
+                max-width: 100%;
+            }
+        }
+        </style>
+    </head>
+
+    <body>
+        <div class="header-wrapper">
+            <div class="header-container" id="header-container">
+                <div class="header-content">
+                    <h1 style="margin-top: 0px"><span class="rf-word">RepFusion</span></h1>
+                    <div class="responsive-header">
+                        <h2>Leveraging Multimodal Priors for Denoising in Representation Space</h2>
+                    </div>
+                    <p class="hero-copy">
+                        Modern text-to-image models already carry huge LLMs, but usually use them once as text encoders.
+                        <span class="rf-word">RepFusion</span> asks a different question: if generation happens in semantic
+                        representation space, can the frozen MLLM become part of the denoising loop?
+                    </p>
+
+                    <div class="icon-container">
+                        <div class="icon-item">
+                            <img src="./static/img/icons/representation.svg" alt="Representation tokens icon">
+                            <div><strong>Noisy visual tokens</strong>: The MLLM sees the current RAE latent, not just the prompt.</div>
+                        </div>
+                        <div class="icon-item">
+                            <img src="./static/img/icons/frozen-mllm.svg" alt="Frozen MLLM icon">
+                            <div><strong>Frozen prior</strong>: Keep the perception-pretrained MLLM intact; train the projector and DiT.</div>
+                        </div>
+                        <div class="icon-item">
+                            <img src="./static/img/icons/denoising-loop.svg" alt="Denoising loop icon">
+                            <div><strong>Useful test-time compute</strong>: Recompute conditioning because the visual state changes every step.</div>
+                        </div>
+                        <div class="icon-item">
+                            <img src="./static/img/icons/baseline-analysis.svg" alt="Baseline analysis icon">
+                            <div><strong>Baseline gains</strong>: Benchmarks are used to validate the mechanism, while the main story remains the controlled analysis.</div>
+                        </div>
+                    </div>
+
+                    <div class="button-container">
+                        <a href="./paper.pdf" class="button paper-link" target="_blank">
+                            <span class="icon is-small">
+                                <i class="fas fa-file-pdf"></i>
+                            </span>
+                            Paper
+                        </a>
+                        <a href="#method" class="button paper-link">
+                            <span class="icon is-small">
+                                <i class="fas fa-lightbulb"></i>
+                            </span>
+                            <span>Core Idea</span>
+                        </a>
+                        <a href="#results" class="button">
+                            <span class="icon is-small">
+                                <i class="fas fa-chart-line"></i>
+                            </span>
+                            <span>Results</span>
+                        </a>
+                        <a href="#bibtex" class="button">
+                            <span class="icon is-small">
+                                <i class="fas fa-quote-right"></i>
+                            </span>
+                            <span>BibTeX</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="header-image">
+                    <img draggable="false" src="static/img/repfusion/t2i.png" alt="RepFusion samples" class="teaser-image">
+                </div>
+            </div>
+        </div>
+    <d-article>
+
+
+        <div class="byline">
+            <div class="byline-container" style="max-width: 1100px; display: block;">
+                <div class="authors" style="text-align: center; margin-bottom: 0.75rem; width: 100%;">
+                    <div class="author-row">
+                        <a href="https://xichenpan.com/" target="_blank"><span class="author-name">Xichen Pan</span></a><sup>1,2</sup>,
+                        <a href="#" target="_blank"><span class="author-name">Aashu Singh</span></a><sup>1</sup>,
+                        <a href="#" target="_blank"><span class="author-name">Satya Narayan Shukla</span></a><sup>1,*</sup>,
+                        <a href="#" target="_blank"><span class="author-name">Xiangjun Fan</span></a><sup>1</sup>,
+                        <a href="#" target="_blank"><span class="author-name">Shlok Kumar Mishra</span></a><sup>1,&dagger;</sup>,
+                        <a href="https://www.sainingxie.com/" target="_blank"><span class="author-name">Saining Xie</span></a><sup>2,&dagger;</sup>
+                    </div>
+                </div>
+                <div class="affiliations" style="text-align: center; font-size: 1rem; color: #666; width: 100%;">
+                    <span><sup>1</sup>Meta AI</span>&nbsp;&nbsp;
+                    <span><sup>2</sup>NYU</span>
+                </div>
+                <div style="text-align: center; font-size: 0.95rem; color: #888; margin-top: 0.3rem; width: 100%;">
+                    <sup>*</sup>Work done at Meta &nbsp;&nbsp; <sup>&dagger;</sup>Equal advising
+                </div>
+            </div>
+        </div>
+
+
+        <h1 class="text">Overview</h1>
+
+        <d-figure id="fig-teaser">
+            <figure>
+                <img data-zoomable="" draggable="false" src="static/img/repfusion/motivation.png" alt="RepFusion motivation figure" style="max-width: 68%;">
+                <figcaption>
+                    <strong>Figure 1: Moving from VAEs to RAEs unlocks pretrained language priors.</strong>
+                    The RAE transition separates <span class="rf-word">RepFusion</span> from text-only and unified-denoiser baselines, suggesting that the representation space is what lets the MLLM prior become useful.
+                </figcaption>
+            </figure>
+        </d-figure>
+
+
+        <div class="text rf-lede">
+            <p>
+                <strong>The short version:</strong> RAEs move image generation into a semantic feature space that MLLMs already know how to read.
+                <span class="rf-word">RepFusion</span> exploits that alignment by feeding the <em>current noisy visual representation</em> into a frozen MLLM at every denoising step, then using the MLLM output to guide a DiT.
+            </p>
+        </div>
+
+        <div class="finding-grid">
+            <div class="finding-card">
+                <span class="tag">Finding</span>
+                <h3>RAE space unlocks the prior</h3>
+                <p>The clearest improvement appears when denoising moves from compressed VAE latents into semantic RAE representations.</p>
+            </div>
+            <div class="finding-card">
+                <span class="tag">Finding</span>
+                <h3>Conditioning must see the sample</h3>
+                <p>Rerunning a static MetaQuery-style encoder costs more but does not help; feeding evolving noisy latents does.</p>
+            </div>
+            <div class="finding-card">
+                <span class="tag">Finding</span>
+                <h3>Freeze the perception model</h3>
+                <p>Fine-tuning helps language-only LLMs, but preserving a perception-pretrained MLLM is better here.</p>
+            </div>
+            <div class="finding-card">
+                <span class="tag">Finding</span>
+                <h3>Spend fewer trainable params</h3>
+                <p>Under matched budgets, allocating capacity to a frozen conditional encoder improves over training larger newly initialized denoisers.</p>
+            </div>
+        </div>
+
+
+        <div class="icon-row">
+            <a href="#method" class="icon-link">
+                <img src="./static/img/icons/representation.svg" alt="Method Icon" class="icon">
+                <span>Method</span>
+            </a>
+            <a href="#efficiency" class="icon-link">
+                <img src="./static/img/icons/baseline-analysis.svg" alt="Efficiency Icon" class="icon">
+                <span>Parameter Efficiency</span>
+            </a>
+            <a href="#results" class="icon-link">
+                <img src="./static/img/icons/benchmark-check.svg" alt="Results Icon" class="icon">
+                <span>T2I Results</span>
+            </a>
+            <a href="#analysis" class="icon-link">
+                <img src="./static/img/icons/compute-split.svg" alt="Analysis Icon" class="icon">
+                <span>Analysis &amp; Scaling</span>
+            </a>
+        </div>
+
+        <p class="click-hint2" style="width: 85%;">
+            <strong>Click any icon to jump to the corresponding section.</strong>
+        </p>
+
+        <hr>
+
+
+        <!-- ================== METHOD ================== -->
+        <div id="method" class="vsi-benchmark">
+            <div class="sub-section">
+                <h1 class="text"><span class="section-eyebrow">Core Idea</span><br><span class="rf-word">RepFusion</span>: Make the Encoder Dynamic</h1>
+
+                <p class="text" align="justify">
+                    Most T2I systems use an LLM as a one-shot text encoder: read the prompt, freeze the condition, let the denoiser do the rest.
+                    <span class="rf-word">RepFusion</span> changes only one assumption. Because RAE latents are semantic visual representations, the MLLM can also read the <em>noisy</em> latent currently being denoised.
+                    The condition therefore becomes state-dependent rather than static.
+                </p>
+
+                <d-figure id="fig-arch">
+                    <figure>
+                        <img data-zoomable="" draggable="false" src="static/img/repfusion/arch.png" alt="RepFusion architecture" style="max-width: 46%;">
+                        <figcaption>
+                            <strong>Figure 2: Overview of <span class="rf-word">RepFusion</span>.</strong>
+                            Blue modules are frozen; red modules are trainable. A noisy RAE latent is projected into the MLLM input space, the frozen MLLM reads it together with the caption, and its visual-token outputs condition the DiT.
+                        </figcaption>
+                    </figure>
+                </d-figure>
+
+                <p class="text" align="justify">
+                    The recipe is deliberately small: project the noisy RAE tokens into the MLLM space, add the timestep signal, keep the LLM backbone frozen, and train the projector plus DiT. The final hidden states corresponding to the noisy visual tokens become the DiT condition. Since the noisy latent changes during sampling, the MLLM recomputes a different condition at each step.
+                </p>
+
+                <p class="text" align="justify">
+                    The interface is also simple. RAE tokens and DiT tokens are aligned, so <span class="rf-word">RepFusion</span> uses token-wise AdaLN modulation instead of adding a cross-attention stack. Each MLLM output token predicts the scale, shift, and gate for its matching DiT token.
+                </p>
+
+                <d-figure id="fig-metaquery">
+                    <figure>
+                        <img data-zoomable="" draggable="false" src="static/img/repfusion/metaquery.png" alt="MetaQuery vs RepFusion conditioning" style="max-width: 70%;">
+                        <figcaption>
+                            <strong>Figure 3: A new axis for test-time scaling.</strong>
+                            MetaQuery-style conditioning is static: rerunning it with more FLOPs does not expose the MLLM to a new visual state. <span class="rf-word">RepFusion</span> instead makes the condition depend on the current noisy latent.
+                        </figcaption>
+                    </figure>
+                </d-figure>
+
+                <div class="rf-callout">
+                    <p>
+                        <strong>The important distinction:</strong> extra inference compute helps only when it reads something new.
+                        Learnable-query and timestep-only controls do not close the gap, because the MLLM never observes the evolving visual state.
+                        Feeding the noisy representation gives the encoder an input-dependent signal to reinterpret at every step.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- ================== PARAMETER EFFICIENCY ================== -->
+        <div id="efficiency" class="vsi-evaluation">
+            <h1 class="text"><span class="section-eyebrow">Key Evidence</span><br>Spend Parameters on Priors, not Just Denoisers</h1>
+
+            <p class="text" align="justify">
+                A common instinct is to make the denoiser larger. The controlled comparison below suggests a sharper allocation: keep a strong pretrained MLLM as the conditional encoder, then train a much smaller denoiser around it. At similar inference FLOPs, <span class="rf-word">RepFusion</span> fine-tunes only a projector and a 1.3B DiT, yet beats baselines that train roughly 8B denoising parameters.
+            </p>
+
+            <d-figure id="fig-efficiency">
+                <figure>
+                    <img data-zoomable="" draggable="false" src="static/img/repfusion/param_efficiency.png" alt="RepFusion parameter efficiency" style="max-width: 72%;">
+                    <figcaption>
+                        <strong>Figure 4: Parameter efficiency.</strong>
+                        Circle diameter denotes total parameters; the inner disk denotes trainable parameters. The win comes from using pretrained encoder capacity, not from training the largest new denoiser.
+                    </figcaption>
+                </figure>
+            </d-figure>
+
+            <h2 class="text" style="margin-top: 40px;">Where the Gain Comes From</h2>
+            <p class="text" align="justify">
+                Two ablation paths tell the same story. The big jumps come from moving into RAE space and turning a perception-pretrained MLLM into the conditional encoder. Extra joint optimization is not the main driver; preserving the MLLM prior is.
+            </p>
+            <d-figure id="fig-roadmap">
+                <figure>
+                    <div style="display: flex; flex-direction: column; gap: 1.25em; justify-content: center; align-items: center;">
+                        <img data-zoomable="" draggable="false" src="static/img/repfusion/convnext.png" alt="Roadmap from TextEmbed" style="max-width: 78%; height: auto;">
+                        <img data-zoomable="" draggable="false" src="static/img/repfusion/convnext_transfusion.png" alt="Roadmap from Transfusion" style="max-width: 78%; height: auto;">
+                    </div>
+                    <figcaption>
+                        <strong>Figure 5: Roadmap of building <span class="rf-word">RepFusion</span></strong> from (left) TextEmbed and (right) Transfusion. Bars show GenEval scores; a hatched bar means the modification is not adopted in the final model.
+                    </figcaption>
+                </figure>
+            </d-figure>
+        </div>
+
+
+        <!-- ================== T2I RESULTS ================== -->
+        <div id="results" class="vsi-evaluation">
+            <h1 class="text"><span class="section-eyebrow">Benchmark Checks</span><br>Do the Mechanistic Gains Translate?</h1>
+
+            <p class="text" align="justify">
+                The benchmark section is a validation layer for the analysis above. We use standard T2I and reasoning evaluations to check whether the controlled gains over TextEmbed, Transfusion, and learnable-query baselines survive in the full system. The emphasis is on consistent improvement over the relevant baselines, not on ranking models for its own sake.
+            </p>
+
+            <div class="evidence-grid">
+                <div class="evidence-card">
+                    <span class="label">Prompt alignment</span>
+                    <span class="detail">The full system preserves the gains observed in controlled RAE and conditioning ablations.</span>
+                </div>
+                <div class="evidence-card">
+                    <span class="label">Robust evaluation</span>
+                    <span class="detail">GenEval2 is included to check that improvements are not only tied to older benchmark protocols.</span>
+                </div>
+                <div class="evidence-card">
+                    <span class="label">Reasoning prompts</span>
+                    <span class="detail">WISE probes whether the frozen MLLM prior remains useful for knowledge-heavy generation.</span>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Methods</th><th>GenEval ↑</th><th>GenEval++ ↑</th><th>GenEval2 ↑</th><th>DPG-Bench ↑</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="group-header"><td colspan="5"><i>Prior Work</i></td></tr>
+                            <tr><td>Transfusion</td><td>0.63</td><td>–</td><td>–</td><td>–</td></tr>
+                            <tr><td>MetaQuery-XL</td><td>0.80<sup>&dagger;</sup></td><td>–</td><td>–</td><td>82.05</td></tr>
+                            <tr><td>BLIP-3o 8B</td><td>0.84</td><td>0.307</td><td>–</td><td>81.60</td></tr>
+                            <tr><td>OmniGen2</td><td>0.80</td><td>0.325</td><td>–</td><td>83.57</td></tr>
+                            <tr><td>BAGEL</td><td>0.82</td><td>0.371</td><td>23.1<sup>&dagger;</sup></td><td>84.03</td></tr>
+                            <tr><td>Scale-RAE</td><td>0.83</td><td>–</td><td>–</td><td>79.70</td></tr>
+                            <tr class="group-header"><td colspan="5"><i>RepFusion</i></td></tr>
+                            <tr><td><span class="rf-word">RepFusion</span> w/ RAE Decoder</td><td>0.73</td><td>0.432</td><td>30.2</td><td>82.75</td></tr>
+                            <tr><td><span class="rf-word">RepFusion</span> w/ Diffusion Decoder</td><td>0.78</td><td>0.443</td><td>29.9</td><td>84.41</td></tr>
+                            <tr><td><span class="rf-word">RepFusion</span>-SFT w/ RAE Decoder</td><td>0.85</td><td class="best">0.707</td><td class="best">35.1</td><td>84.17</td></tr>
+                            <tr class="ours"><td><span class="rf-word">RepFusion</span>-SFT w/ Diffusion Decoder</td><td class="best">0.87</td><td>0.669</td><td>34.9</td><td class="best">85.11</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <figcaption><strong>Table 1:</strong> Text-to-image generation results. <sup>&dagger;</sup>denotes rewritten prompts. For GenEval2, we report the prompt-level Soft-TIFA<sub>GM</sub> metric.</figcaption>
+            </div>
+
+            <d-figure id="fig-samples">
+                <figure>
+                    <img data-zoomable="" draggable="false" src="static/img/repfusion/t2i.png" alt="RepFusion text-to-image samples">
+                    <figcaption>
+                        <strong>Figure 6: Visual samples of text-to-image generation.</strong>
+                        <span class="rf-word">RepFusion</span> follows prompts involving fine-grained attributes, object relations, camera motion, and rendered text.
+                    </figcaption>
+                </figure>
+            </d-figure>
+
+            <h2 class="text" style="margin-top: 40px;">Reasoning-Based Generation</h2>
+            <p class="text" align="justify">
+                Because the MLLM remains frozen, the generator can still draw on world knowledge and reasoning behavior already present in the backbone. WISE is included as an additional stress test for that design choice.
+            </p>
+            <div class="table-wrapper">
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Model</th><th>Cultural</th><th>Time</th><th>Space</th>
+                                <th>Biology</th><th>Physics</th><th>Chemistry</th><th>Overall</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>MetaQuery-XL</td><td>0.56</td><td>0.55</td><td>0.62</td><td>0.49</td><td>0.63</td><td>0.41</td><td>0.55</td></tr>
+                            <tr><td>BLIP-3o 8B</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>0.62</td></tr>
+                            <tr><td>BAGEL</td><td>0.44</td><td>0.55</td><td>0.68</td><td>0.44</td><td>0.60</td><td>0.39</td><td>0.52</td></tr>
+                            <tr><td><span class="rf-word">RepFusion</span>-SFT w/ RAE Decoder</td><td>0.55</td><td>0.53</td><td>0.70</td><td>0.51</td><td>0.57</td><td>0.41</td><td>0.55</td></tr>
+                            <tr class="ours"><td><span class="rf-word">RepFusion</span>-SFT w/ Diff. Decoder</td><td class="best">0.65</td><td class="best">0.63</td><td class="best">0.79</td><td class="best">0.63</td><td class="best">0.67</td><td class="best">0.44</td><td class="best">0.64</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <figcaption><strong>Table 2:</strong> Reasoning-based generation on WISE. Bold marks the highest value within the table.</figcaption>
+            </div>
+        </div>
+
+
+        <!-- ================== ANALYSIS ================== -->
+        <div id="analysis" class="viusal-representation-block">
+            <h1 class="text"><span class="section-eyebrow">Analysis</span><br>Why Perception Pretraining Matters</h1>
+
+            <p class="text" align="justify">
+                Reading noisy RAE latents is still a perception problem. A language-only LLM can help, but a perception-pretrained MLLM is consistently better because it already knows how to model structured visual tokens. That prior transfers from clean visual understanding to noisy representation denoising.
+            </p>
+
+            <d-figure id="fig-ptlm">
+                <figure>
+                    <img data-zoomable="" draggable="false" src="static/img/repfusion/ptlm.png" alt="Effect of perception pretraining" style="max-width: 76%;">
+                    <figcaption>
+                        <strong>Figure 7: Effect of multimodal perception pretraining.</strong>
+                        Replacing a language-only LLM with a perception-pretrained MLLM improves both Transfusion-RAE and <span class="rf-word">RepFusion</span>, indicating that perception pretraining is a transferable prior for diffusion in RAE space.
+                    </figcaption>
+                </figure>
+            </d-figure>
+
+            <p class="text" align="justify">
+                <strong>Freeze, don't overfit the prior.</strong> Fine-tuning helps when the backbone is language-only, but it can degrade a perception-pretrained MLLM in the RAE setting. The surprising takeaway is practical: once the MLLM already knows how to perceive visual tokens, preserve that prior and train the lightweight interface around it.
+            </p>
+
+            <d-figure id="fig-frozen">
+                <figure>
+                    <img data-zoomable="" draggable="false" src="static/img/repfusion/frozenllm.png" alt="Effect of freezing vs fine-tuning the LLM" style="max-width: 76%;">
+                    <figcaption>
+                        <strong>Figure 8: Freezing vs. fine-tuning the LLM backbone.</strong>
+                        Fine-tuning helps a language-only LLM, but freezing is better for a perception-pretrained MLLM in <span class="rf-word">RepFusion</span>-RAE.
+                    </figcaption>
+                </figure>
+            </d-figure>
+        </div>
+
+
+        <!-- ================== SCALING ================== -->
+        <div id="scaling" class="vsi-evaluation">
+            <h1 class="text"><span class="section-eyebrow">Scaling</span><br>Compute Helps When It Reads a Changing Signal</h1>
+
+            <p class="text" align="justify">
+                <span class="rf-word">RepFusion</span> has two inference-time axes: the frozen MLLM that repeatedly reads the noisy representation, and the DiT that predicts the denoising update. Increasing either component can help, but the preferred allocation still depends on the metric and budget.
+            </p>
+
+            <d-figure id="fig-coscaling">
+                <figure>
+                    <img data-zoomable="" draggable="false" src="static/img/repfusion/coscaling.png" alt="MLLM and DiT co-scaling">
+                    <figcaption>
+                        <strong>Figure 9: MLLM and DiT co-scaling.</strong>
+                        <span class="rf-word">RepFusion</span> benefits from both scaling axes across GenEval, GenEval++, GenEval2, and DPG-Bench.
+                    </figcaption>
+                </figure>
+            </d-figure>
+
+            <p class="text" align="justify">
+                Under iso-FLOPs budgets, larger DiTs are often the better within-family choice. But against TextEmbed, which spends nearly all sampling compute on a static-condition DiT, <span class="rf-word">RepFusion</span> remains stronger. The point is not that the MLLM should consume all compute; it is that some compute should go to an encoder that sees the evolving sample.
+            </p>
+
+            <div class="table-wrapper">
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>LLM Size</th><th>DiT Size</th><th>FLOPs Split (LLM | DiT)</th>
+                                <th>GenEval ↑</th><th>GenEval++ ↑</th><th>GenEval2 ↑</th><th>DPG-Bench ↑</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="group-header"><td colspan="7"><i>~280T inference FLOPs</i></td></tr>
+                            <tr><td>1.0B</td><td>3.2B</td><td>26% | 74%</td><td class="best">0.70</td><td class="best">0.289</td><td class="best">31.18</td><td class="best">82.68</td></tr>
+                            <tr><td>3.0B</td><td>1.3B</td><td>71% | 28%</td><td>0.67</td><td>0.282</td><td>26.97</td><td>81.31</td></tr>
+                            <tr class="group-header"><td colspan="7"><i>~540T inference FLOPs</i></td></tr>
+                            <tr><td>7.0B (TextEmbed)</td><td>8.0B</td><td>3% | 97%</td><td>0.64</td><td>0.321</td><td>26.60</td><td>81.34</td></tr>
+                            <tr class="ours"><td>1.0B</td><td>7.3B</td><td>13% | 87%</td><td class="best">0.70</td><td class="best">0.443</td><td class="best">30.84</td><td class="best">82.58</td></tr>
+                            <tr><td>3.0B</td><td>5.5B</td><td>37% | 63%</td><td>0.69</td><td>0.382</td><td>30.67</td><td>82.20</td></tr>
+                            <tr><td>7.0B</td><td>1.3B</td><td>85% | 15%</td><td>0.70</td><td>0.321</td><td>24.84</td><td>82.08</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <figcaption><strong>Table 3:</strong> Iso-FLOPs comparison of compute allocation between the MLLM and DiT within <span class="rf-word">RepFusion</span>, with TextEmbed as a reference baseline. Bold marks the highest value within each FLOPs budget.</figcaption>
+            </div>
+        </div>
+
+
+        <!-- ================== CONCLUSION ================== -->
+        <div id="conclusion">
+            <h2 class="text" style="margin-top: 40px; margin-bottom: 10px"><span class="section-eyebrow">Takeaways</span><br>What This Suggests</h2>
+            <div class="lesson-grid">
+                <div class="lesson-card">
+                    <h3>Use a representation space the MLLM can understand</h3>
+                    <p>RAEs make denoising latents semantic enough for pretrained multimodal priors to matter.</p>
+                </div>
+                <div class="lesson-card">
+                    <h3>Make the condition input-dependent</h3>
+                    <p>Repeated encoder compute only helps when the encoder sees the evolving noisy sample.</p>
+                </div>
+                <div class="lesson-card">
+                    <h3>Preserve strong perception priors</h3>
+                    <p>Freezing the MLLM can outperform joint optimization when the backbone is already multimodally pretrained.</p>
+                </div>
+                <div class="lesson-card">
+                    <h3>Scale the encoder and denoiser together</h3>
+                    <p>DiT capacity remains important, but static text conditioning leaves useful MLLM compute on the table.</p>
+                </div>
+            </div>
+            <p class="text" align="justify">
+                <span class="rf-word">RepFusion</span> turns the conditional encoder from a static prompt reader into an active denoising-time module. The broader message is simple: if the generation space is semantic enough, frozen MLLMs can contribute more than text embeddings.
+            </p>
+        </div>
+
+
+        <!-- ================== BIBTEX ================== -->
+        <div id="bibtex" style="position: relative; margin-top: 40px; margin-bottom: 0px; color: gray;">
+            <h2 class="text" style="margin-top:0px; margin-bottom:10px">BibTeX</h2>
+            <pre><code>@article{pan2026repfusion,
+  title   = {RepFusion: Leveraging Multimodal Priors for Denoising in Representation Space},
+  author  = {Pan, Xichen and Singh, Aashu and Shukla, Satya Narayan and
+             Fan, Xiangjun and Mishra, Shlok Kumar and Xie, Saining},
+  journal = {arXiv preprint},
+  year    = {2026}
+}</code></pre>
+        </div>
+
+    </d-article>
+
+
+    </body>
+</html>

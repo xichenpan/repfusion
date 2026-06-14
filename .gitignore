@@ -1,0 +1,19 @@
+*.log
+*.aux
+*.out
+*.gz
+*.bbl
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.fls
+*.fdb_latexmk
+*.fls
+*.fdb_latexmk
+*.fls
+paper.pdf
+metaquery/
+
+# Local arXiv export directory.
+**/-arXiv-26-RepFusion-Leveraging-Multimodal-Priors-for-Denoising-in-Representation-Space
